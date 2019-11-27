@@ -114,18 +114,6 @@ class Client implements \ArrayAccess
         return $this->request('DELETE',$options);
     }
 
-    public function delete2($id=null,$options=[]) { 
-        if($id === null) 
-            $id = $this->id; $query = null;
-
-        if($id) 
-            $query .= "($id)"; 
-        
-        $this->requested[] = $query; 
-
-        return $this->request('DELETE',$options); 
-    }
-
     public function __get($name) {
         $this->requested = [];
 
