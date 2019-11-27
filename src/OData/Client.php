@@ -36,13 +36,14 @@ class Client implements \ArrayAccess
         ],$options));
     }
 
-    public function id($id) {
+    public function id($id=null) {
+        if($id === null) return $this->getLastId();
         $this->id = $id;
         return $this;
     }
 
     public function create(array $data,$options=[]) {
-        return $this->update(null,$data,$options);
+        return $this->update(false,$data,$options);
     }
 
     public function expand($name) {
@@ -61,15 +62,25 @@ class Client implements \ArrayAccess
     }
 
     public function get($id=null,$filter=null,$options=[]) {
-        if($id === null) $id = $this->id;
-        elseif(!preg_match('/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i',$id)) {
+        $query = null;
+        if($id === null) {
+            $id = $this->id;
+        } elseif(is_array($id)) {
+            $query = [];
+            foreach($id as $k=>$v) {
+                if(preg_match('/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i',$v)) {
+                    $v = "guid'{$v}'";
+                }
+                $query[] = $k.'='.$v;
+            }
+            $query = '('.implode(',',$query).')';
+        } elseif(!preg_match('/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i',$id)) {
             $options = $filter;
             $filter = $id;
             $id = null;
         }
 
-        $query = null;
-        if($id) {
+        if($id && !is_array($id)) {
             $query .= "(guid'{$id}')";
         }
         if($filter) {
@@ -87,6 +98,7 @@ class Client implements \ArrayAccess
             $options = $data;
             $data = $id;
             $id = $this->id;
+            if(!$this->id) $id = $this->getLastId();
         }
 
         $method = 'PATCH';
@@ -104,19 +116,33 @@ class Client implements \ArrayAccess
         return $this->request($method,$options);
     }
 
-    public function delete($id=null,$options=[],$is_guid=true) {
-        if($id === null) $id = $this->id;
+    public function delete($id=null,$options=[]) {
         $query = null;
 
-        if($id && $is_guid) 
-            $query .= "(guid'{$id}')";
-        elseif($id && !$is_guid)
-            $query .= "($id)"; 
+        if($id === null) {
+            $id = $this->id;
+        } elseif(is_array($id)) {
+            $query = [];
+            foreach($id as $k=>$v) {
+                if(preg_match('/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i',$v)) {
+                    $v = "guid'{$v}'";
+                }
+                $query[] = $k.'='.$v;
+            }
+            $query = '('.implode(',',$query).')';
+        }
 
-        $this->requested[] = $query;
+        if($id && !is_array($id)) {
+            $query .= "(guid'{$id}')";
+        }
+        if($filter) {
+            $this->filter($filter);
+        }
+        if($query)
+            $this->requested[] = $query;
+
         return $this->request('DELETE',$options);
     }
-
 
     public function __get($name) {
         $this->requested = [];
@@ -207,7 +233,9 @@ class Client implements \ArrayAccess
     }
 
     public function getLastId() {
-        return !empty($this->_metadata['last_id']) ? $this->_metadata['last_id'] : null;
+        return !empty($this->_metadata['last_id'])
+            ? $this->_metadata['last_id']
+            : isset($this->response->values()[0]['Ref_Key']) ? $this->response->values()[0]['Ref_Key'] : null;
     }
 
     protected function parseMetadata(ResponseInterface $resp) {
@@ -228,29 +256,30 @@ class Client implements \ArrayAccess
         }
     }
 
-    public function getMetadata($name) {
+    public function getMetadata($name=null) {
+        if($name === null) return $this->_metadata;
         return isset($this->_metadata[$name]) ? $this->_metadata[$name] : null;
     }
 
     protected function objects() {
-		return [
-			'Справочник'=>'Catalog',
-			'Документ'=>'Document',
-			'Журнал документов'=>'DocumentJournal',
-			'Константа'=>'Constant',
-			'План обмена'=>'ExchangePlan',
-			'План счетов'=>'ChartOfAccounts',
-			'План видов расчета'=>'ChartOfCalculationTypes',
-			'План видов характеристик'=>'ChartOfCharacteristicTypes',
-			'Регистр сведений'=>'InformationRegisters',
-			'Регистр накопления'=>'AccumulationRegister',
-			'Регистр расчета'=>'CalculationRegister',
-			'Регистр бухгалтерии'=>'AccountingRegister',
-			'Бизнес-процесс'=>'BusinessProcess',
-			'Задача'=>'Task',
-			'Перечисления'=>'Enum',
-		];
-	}
+        return [
+            'Справочник'=>'Catalog',
+            'Документ'=>'Document',
+            'Журнал документов'=>'DocumentJournal',
+            'Константа'=>'Constant',
+            'План обмена'=>'ExchangePlan',
+            'План счетов'=>'ChartOfAccounts',
+            'План видов расчета'=>'ChartOfCalculationTypes',
+            'План видов характеристик'=>'ChartOfCharacteristicTypes',
+            'Регистр сведений'=>'InformationRegisters',
+            'Регистр накопления'=>'AccumulationRegister',
+            'Регистр расчета'=>'CalculationRegister',
+            'Регистр бухгалтерии'=>'AccountingRegister',
+            'Бизнес-процесс'=>'BusinessProcess',
+            'Задача'=>'Task',
+            'Перечисления'=>'Enum',
+        ];
+    }
 
     public function __call($name,$arguments=[]) {
         $this->is_called = true;
@@ -263,7 +292,7 @@ class Client implements \ArrayAccess
     }
 
     public function offsetSet($offset, $value) {
-		throw new Exception('You\'re trying to write protected object');
+        throw new Exception('You\'re trying to write protected object');
     }
 
     public function offsetExists($offset) {
